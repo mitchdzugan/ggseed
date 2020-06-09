@@ -1,0 +1,28 @@
+{
+  "name": "ggseed",
+  "version": "0.0.1",
+  "description": "TODO",
+  "scripts": {
+    "test": "shadow-cljs watch test",
+    "watch": "shadow-cljs watch browser server",
+    "build": "shadow-cljs clj-run build.main/build",
+    "start": "node ./target/server.js",
+    "scss-dir": "mkdir -p target",
+    "scss-once": "yarn scss-dir; node-sass scss/site.scss > target/site.css",
+    "scss-watch": "node-sass --watch scss/site.scss -o target",
+    "scss": "yarn scss-once; yarn scss-watch",
+    "repl-browser": "shadow-cljs cljs-repl browser",
+    "repl-server": "shadow-cljs cljs-repl server",
+    "repl-test": "shadow-cljs cljs-repl test"
+  },
+  "author": "TODO",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.17.1",
+    "snabbdom": "0.7.4"
+  },
+  "devDependencies": {
+    "node-sass": "^4.14.0",
+    "shadow-cljs": "^2.8.93"
+  }
+}

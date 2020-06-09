@@ -1,0 +1,29 @@
+{:source-paths ["src" "cli"]
+ :dependencies [[mayu "0.1.44"]]
+ :open-file-command ["subl"
+                     ["%s:%s:%s" :file :line :column]]
+ :dev-http {7000 "target"}
+ :builds {:test {:target :browser-test
+                 :test-dir "resources/public/js/test"
+                 :ns-regexp "^-test"
+                 :compiler-options {:warnings {:redef false}}
+                 :devtools {:http-port 8021
+                            :http-root "resources/public/js/test"}}
+          :browser {:output-dir "target/"
+                    :asset-path "./"
+                    :target :browser
+                    :module-hash-names 8
+                    :modules {:client {:init-fn frontends.browser/main!}}
+                    :compiler-options {:warnings {:redef false}
+                                       :infer-externs :auto}
+                    :devtools {:after-load frontends.browser/reload!}
+                    :release {:output-dir "dist/"}
+                    :build-options {:manifest-name "assets.edn"}}
+          :server {:target :node-script
+                   :output-to "target/server.js"
+                   :main server/main!
+                   :compiler-options {:warnings {:redef false}
+                                      :infer-externs :auto}
+                   :devtools {:after-load server/reload!}
+                   :release {:output-to "target/server.js"}}}}}
+
