@@ -1,4 +1,95 @@
-h2 {
-    width: 100%;
-    text-align: center;
+@import "../node_modules/bulma/bulma";
+@import "../node_modules/bulma-steps/dist/css/bulma-steps";
+
+@mixin scrollbars($size, $foreground-color, $background-color: mix($foreground-color, white,  50%)) {
+		// For Google Chrome
+		&::-webkit-scrollbar {
+				width:  $size;
+				height: $size;
+		}
+
+		&::-webkit-scrollbar-thumb {
+				background: $foreground-color;
+				border-radius: 0.25em;
+		}
+
+		&::-webkit-scrollbar-corner {
+				background: $background-color;
+		}
+
+		&::-webkit-scrollbar-track {
+				background: $background-color;
+		}
+
+		// For Internet Explorer
+		& {
+				scrollbar-color: $foreground-color $background-color;
+				scrollbar-width: thin;
+				scrollbar-face-color: $foreground-color;
+				scrollbar-track-color: $background-color;
+		}
+}
+
+.column {
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+}
+
+.steps {
+		.step-item {
+				&.is-completable {
+						cursor: pointer;
+				}
+		}
+}
+
+.item {
+		padding: 2px 10px;
+		&.selected {
+				background: $cyan;
+				color: $white;
+		}
+}
+
+.select-split {
+		display: flex;
+		flex-direction: row;
+		justify-content: space-around;
+		> div {
+				flex: 1;
+				margin: 10px;
+		}
+}
+
+@media only screen and (max-width: 768px) {
+		.select-split {
+				flex-direction: column;
+		}
+}
+
+.seeding-wrap {
+		display: flex;
+		flex-direction: column;
+		align-items: stretch;
+
+		> div {
+				margin: 10px 0;
+		}
+}
+
+.disabled {
+		opacity: 0.4;
+}
+
+.section .none {
+		display: none;
+}
+
+.scroller {
+		@include scrollbars(0.5em, $grey-darker, transparent);
+}
+
+.boxer {
+		box-shadow: $box-shadow;
 }

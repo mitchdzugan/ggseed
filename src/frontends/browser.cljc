@@ -1,6 +1,7 @@
 (ns frontends.browser
   (:require [allpa.core :as a]
             [accountant.core :as accountant]
+            [cognitect.transit :as t]
             [mayu.attach :as attach]
             [mayu.frp.event :as e]
             [mayu.frp.signal :as s]
@@ -10,15 +11,23 @@
 (defonce a-s-route (atom {}))
 (defonce a-off (atom (fn [])))
 
+(def w (a/writer :json))
+(def r (a/reader :json))
+
 (defn mount-root []
   (let [{:keys [off]}
         (attach/attach (js/document.getElementById "app")
-                       {::r/s-route @a-s-route}
+                       {:gets #(some->> (js/localStorage.getItem "ggseed")
+                                        (t/read r))
+                        :sets #(->> (t/write w %)
+                                    (js/localStorage.setItem "ggseed"))
+                        ::r/s-route @a-s-route}
                        ui.entry/root)]
     (reset! a-off off)))
 
 (defn main! []
   (println "Client init")
+  (aset js/window "FontAwesomeConfig" #js{:autoReplaceSvg false})
   (let [e-route (e/on! (e/Event))
         {s-route :signal} (s/build (s/from nil e-route))]
     (reset! a-s-route s-route)

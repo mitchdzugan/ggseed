@@ -40,6 +40,25 @@
       <meta content=\"width=device-width, initial-scale=1\" name=\"viewport\">
       <link href=\"/" css-name "\" rel=\"stylesheet\" type=\"text/css\">
       <title>ggseed</title>
+      <link
+          href=\"https://kit-free.fontawesome.com/releases/latest/css/free-v4-shims.min.css\"
+          media=\"all\"
+          rel=\"stylesheet\"
+      >
+      <link
+          href=\"https://kit-free.fontawesome.com/releases/latest/css/free-v4-font-face.min.css\"
+          media=\"all\"
+          rel=\"stylesheet\"
+      >
+      <link
+          href=\"https://kit-free.fontawesome.com/releases/latest/css/free.min.css\"
+          media=\"all\"
+          rel=\"stylesheet\"
+      >
+      <script
+          src=\"https://kit.fontawesome.com/80071b01f7.js\"
+          crossorigin=\"anonymous\"
+      ></script>
    </head>
    <body>
       <div id=\"app\">
@@ -57,7 +76,9 @@
   (.write res page-pre)
   (let [{:keys [signal off]}
         (s/build (s/from route e/never))
-        markup-channel (dom/render-to-string {::r/s-route signal} ui.entry/root)]
+        markup-channel (dom/render-to-string {:gets #(-> nil)
+                                              :sets #(-> nil)
+                                              ::r/s-route signal} ui.entry/root)]
     (go-loop []
       (let [markup (<! markup-channel)]
         (if (nil? markup)
