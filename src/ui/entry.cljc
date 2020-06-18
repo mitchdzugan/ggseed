@@ -75,7 +75,7 @@
     <[p {:class "help"} $=
       <[dom/text "Copy and paste your smash.gg API key obtained from "]
       <[a {:target "_blank"
-           :href "https://smash.gg/admin/user/bb37c062/developer"}
+           :href "https://smash.gg/admin/profile/developer"}
         "here"]
       <[dom/text "."]]]
   <[div {:class "field"} $=
