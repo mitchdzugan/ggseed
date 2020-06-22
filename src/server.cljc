@@ -92,11 +92,12 @@
 
 (defn fetch [url ^js res]
   (.then (curl #js {:url url})
-         #(case (.-statusCode %1)
-            200 (.json res #js{:csv (.-body %1)})
-            307 (fetch (.. %1 -headers -Location) res)
-            404 (.json res #js{:error "Sheet does not exist"})
-            (.json res #js{:error "Sheet is not public"}))))
+         (fn [^js curld]
+           (case (.-statusCode curld)
+             200 (.json res #js{:csv (.-body curld)})
+             307 (fetch (.. curld -headers -Location) res)
+             404 (.json res #js{:error "Sheet does not exist"})
+             (.json res #js{:error "Sheet is not public"})))))
 
 (defn main! []
   (.get app #"/dl-sheet"
