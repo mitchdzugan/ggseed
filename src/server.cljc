@@ -1,6 +1,7 @@
 (ns server
   (:require ["express" :as express]
             ["fs" :as fs]
+            ["request-curl" :as curl]
             [allpa.core :as a]
             [cljs.reader :as reader]
             [router :as r]
@@ -89,9 +90,24 @@
 
 (def app (express))
 
+(defn fetch [url ^js res]
+  (.then (curl #js {:url url})
+         #(case (.-statusCode %1)
+            200 (.json res #js{:csv (.-body %1)})
+            307 (fetch (.. %1 -headers -Location) res)
+            404 (.json res #js{:error "Sheet does not exist"})
+            (.json res #js{:error "Sheet is not public"}))))
+
 (defn main! []
+  (.get app #"/dl-sheet"
+        (fn [req res]
+          (let [id (.. req -query -sheet)
+                url (str "https://docs.google.com/spreadsheets/d/"
+                         id
+                         "/export?format=csv")]
+            (fetch url res))))
   (.get app #".*"
-        (fn [req res next]
+        (fn [req ^js res next]
           (let [url (.-url req)
                 route (r/match-by-path url)]
             (if route

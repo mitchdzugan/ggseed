@@ -79,11 +79,11 @@
         "here"]
       <[dom/text "."]]]
   <[div {:class "field"} $=
-    <[label {:class "label"} "Tournament Slug"]
+    <[label {:class "label"} "Tournament URL"]
     <[div {:class "control"} $=
       <[input {:class "input"
                :type "text"
-               :placeholder "Slug"
+               :placeholder "URL"
                :value input-slug}
         ] d-slug >
       (->> (dom/on-input d-slug)
@@ -97,18 +97,7 @@
            (e/map #(->Assoc [:done? true]))
            (dom/emit ::state))]
     <[p {:class "help"} $=
-      <[dom/text (str "Your tournament slug can be obtained from the tournament url. Go"
-                      " to your tournament home page and you will see a url that lookes like"
-                      " this: ")]
-      <[span {:class "has-text-link"} $=
-        <[dom/text "https://smash.gg/tournament/"]
-        <[strong {:class "has-text-link"} "__SLUG__"]
-        <[dom/text "/details"]]
-      <[dom/text ". Copy and paste the "]
-      <[strong "__SLUG__"]
-      <[dom/text " portion of your url here."]
-      ]
-    ])
+      <[dom/text "Paste a link to any of your tournament's pages here."]]])
 
 (defui select-phase [{:keys [events event-ind phase-id]} _]
   <[div {:class "select-split"} $=
@@ -151,55 +140,61 @@
        first))
 
 (defn refresh-csv [e-state {:keys [sheet-id num-col id-col]} after keep-loading?]
-  (->> (->Assoc [:loading? true :error nil])
-       (e/push! e-state))
-  (.then (js/fetch (js/Request. (str "https://docs.google.com/spreadsheets/d/"
-                                     sheet-id
-                                     "/export?format=csv")
-                                #js {:redirect "manual"}))
-         #(cond
-            (= "opaqueredirect" (aget %1 "type"))
-            (->> (->Assoc [:loading? false
-                           :csv nil
-                           :num-col nil
-                           :id-col nil
-                           :error (str "Sheet is not public")])
-                 (e/push! e-state))
-            (= 404 (aget %1 "status"))
-            (when-not (empty? sheet-id)
-              (->> (->Assoc [:loading? false
-                             :csv nil
-                             :num-col nil
-                             :id-col nil
-                             :error (str "Sheet \"" sheet-id "\" Does Not Exist")])
-                   (e/push! e-state)))
-            :else
-            (.then (.text %1)
-                   (fn [raw-csv]
+  (->> (->Assoc [:error nil]) (e/push! e-state))
+  (try
+    (let [url (js/URL. sheet-id)
+          pathname (.-pathname url)
+          parts (->> (clojure.string/split pathname #"/")
+                     (remove empty?))
+          g-sheet-id (apply max-key count parts)]
+      (->> (->Assoc [:loading? true :error nil])
+           (e/push! e-state))
+      (->  (js/fetch (js/Request. (str "/dl-sheet?sheet=" g-sheet-id)))
+           (.then #(.text %1))
+           (.then #(let [res (js/JSON.parse %1)
+                         error (.-error res)
+                         raw-csv (.-csv res)]
                      (->> (->Assoc [:loading? false])
                           (e/push! e-state))
-                     (csv-parse raw-csv
-                                (fn [err csv]
-                                  (if err
-                                    (->> (->Assoc [:loading? false
-                                                   :error err
-                                                   :csv nil
-                                                   :num-col nil
-                                                   :id-col nil])
-                                         (e/push! e-state))
-                                    (->> (->Assoc [:loading? keep-loading?
-                                                   :csv csv
-                                                   :num-col (or num-col (index-of "Phase Seed"
-                                                                                  (nth csv 0 [])))
-                                                   :id-col (or id-col (index-of "Seed ID"
-                                                                                (nth csv 0 [])))])
-                                         (e/push! e-state)
-                                         (after csv))))))))))
+                     (if error
+                       (->> (->Assoc [:loading? false
+                                      :error error
+                                      :csv nil
+                                      :num-col nil
+                                      :id-col nil])
+                            (e/push! e-state))
+                       (csv-parse raw-csv
+                                  (fn [err csv]
+                                    (if err
+                                      (->> (->Assoc [:loading? false
+                                                     :error err
+                                                     :csv nil
+                                                     :num-col nil
+                                                     :id-col nil])
+                                           (e/push! e-state))
+                                      (->> (->Assoc [:loading? keep-loading?
+                                                     :csv csv
+                                                     :num-col (or num-col (index-of "Phase Seed"
+                                                                                    (nth csv 0 [])))
+                                                     :id-col (or id-col (index-of "Seed ID"
+                                                                                  (nth csv 0 [])))])
+                                           (e/push! e-state)
+                                           (after csv))))))))
+           (.catch #(->> (->Assoc [:loading? false
+                                   :csv nil
+                                   :num-col nil
+                                   :id-col nil
+                                   :error (str "Sheet is not public")])
+                         (e/push! e-state)))))
+    (catch js/Error e
+      (when-not (empty? sheet-id)
+        (e/push! e-state (->Assoc [:loading? false :error "Invalid URL"])))
+      nil)))
 
-(defui upload-seeding [{:keys [sheet-id csv num-col id-col input-key phase-id] :as state} e-state]
+(defui upload-seeding [{:keys [modal? sheet-id csv num-col id-col input-key phase-id] :as state} e-state]
   <[div {:class "seeding-wrap"} $=
     <[div {:class "field"} $=
-      <[label {:class "label"} (str "Sheets ID")]
+      <[label {:class "label"} (str "Google Sheets Link")]
       <[div {:class "control"} $=
         <[input {:class "input"
                  :type "text"
@@ -222,15 +217,8 @@
         <[strong "Phase Seed"]
         <[dom/text (str " column to reflect your desired seeds and then upload to google sheets. Once"
                         " you have done this, you need to use the \"Share\" button at the top right of"
-                        " Google Sheets and ensure the document is visible to anyone with a link. If you"
-                        " copy the link you will have a link copied that looks like this: ")]
-        <[span {:class "has-text-link"} $=
-          <[dom/text "https://docs.google.com/spreadsheets/d/"]
-          <[strong {:class "has-text-link"} "__SHEET_ID__"]
-          <[dom/text "/edit?usp=sharing"]]
-        <[dom/text ". Copy and paste the "]
-        <[strong "__SHEET_ID__"]
-        <[dom/text " portion of your url here."]]]
+                        " Google Sheets and ensure the document is visible to anyone with a link. Once"
+                        " public, copy and paste the link here.")]]]
     let [cols (nth csv 0 [])
          no-csv? (empty? csv)]
     <[div {:class {:select-split true :disabled no-csv?}} $=
@@ -270,38 +258,61 @@
               :class "button is-info"}
       "Update smash.gg seeding"] d-update >
     (-> (dom/on-click d-update)
-        (dom/consume! (fn []
-                        (e/push! e-state (->Assoc [:loading? true :error nil]))
-                        (refresh-csv e-state state
-                                     (fn [csv]
-                                       (let [seed-mapping (->> csv
-                                                               (drop 1)
-                                                               (map #(-> {:seedId (js/parseInt (nth % id-col))
-                                                                          :seedNum (js/parseInt (nth % num-col))}))
-                                                               (sort-by :seedNum)
-                                                               clj->js)
-                                             client
-                                             (graphql-client #js {:url "https://api.smash.gg/gql/alpha"
-                                                                  :headers #js {:Authorization
-                                                                                (str "Bearer "
-                                                                                     input-key)}})
-                                             ]
-                                         (-> client
-                                             (.query update-mutation #js {:seedMapping seed-mapping
-                                                                          :phaseId phase-id})
-                                             (.then (fn [res]
-                                                      (let [errors (or (aget res "errors") #js[])
-                                                            e1 (or (aget errors 0) #js{})
-                                                            message (or (aget e1 "message") nil)]
-                                                        (if message
-                                                          (->> (->Assoc [:loading? false
-                                                                         :error message])
-                                                               (e/push! e-state))
-                                                          (->> (->Assoc [:loading? false
-                                                                         :completed 3
-                                                                         :step 4])
-                                                               (e/push! e-state)))))))))
-                                     true))))])
+        (dom/consume! #(e/push! e-state (->Assoc [:modal? true]))))
+    <[when modal?
+      <[div {:style {:position "fixed"
+                     :z-index "100"
+                     :left 0
+                     :height "100%"
+                     :width "100%"
+                     :transition "transform 0.5s ease-in-out"
+                     :transform "translateY(-100%)"
+                     :delayed {:transform "translateY(0)"}
+                     :remove {:transform "translateY(-100%)"}}} $=
+        <[div {:style {:margin "20px"}
+               :class "notification is-light is-warning"} $=
+          <[dom/text "Are you sure you want to update seeding? This action cannot be undone!"]
+          <[div {:class "buttons"
+                 :style {:margin-top "20px"
+                         :display "flex"
+                         :flex-direction "row"}} $=
+            <[button {:class "button is-small is-info"} "Update"] d-finalize >
+            <[button {:class "button is-small"} "Cancel"] d-cancel >
+            (-> (dom/on-click d-cancel)
+                (dom/consume! #(e/push! e-state (->Assoc [:modal? false]))))
+            (-> (dom/on-click d-finalize)
+                (dom/consume! (fn []
+                                (e/push! e-state (->Assoc [:loading? true :error nil :modal? false]))
+                                (refresh-csv e-state state
+                                             (fn [csv]
+                                               (let [seed-mapping (->> csv
+                                                                       (drop 1)
+                                                                       (map #(-> {:seedId (js/parseInt (nth % id-col))
+                                                                                  :seedNum (js/parseInt (nth % num-col))}))
+                                                                       (sort-by :seedNum)
+                                                                       clj->js)
+                                                     client
+                                                     (graphql-client #js {:url "https://api.smash.gg/gql/alpha"
+                                                                          :headers #js {:Authorization
+                                                                                        (str "Bearer "
+                                                                                             input-key)}})
+                                                     ]
+                                                 (-> client
+                                                     (.query update-mutation #js {:seedMapping seed-mapping
+                                                                                  :phaseId phase-id})
+                                                     (.then (fn [res]
+                                                              (let [errors (or (aget res "errors") #js[])
+                                                                    e1 (or (aget errors 0) #js{})
+                                                                    message (or (aget e1 "message") nil)]
+                                                                (if message
+                                                                  (->> (->Assoc [:loading? false
+                                                                                 :error message])
+                                                                       (e/push! e-state))
+                                                                  (->> (->Assoc [:loading? false
+                                                                                 :completed 3
+                                                                                 :step 4])
+                                                                       (e/push! e-state)))))))))
+                                             true))))]]]]])
 
 (defui finish [{:keys [event-id slug phase-id]} _]
   let [url (str "https://smash.gg/admin/"
@@ -320,51 +331,63 @@
       <[dom/text " to view the updated seeding"]]])
 
 (defn on-link [e-state {:keys [input-key input-slug done? completed]}]
-  (e/push! e-state (->Assoc [:loading? true :error nil]))
-  (let [client
-        (graphql-client #js {:url "https://api.smash.gg/gql/alpha"
-                             :headers #js {:Authorization (str "Bearer "
-                                                               input-key)}})]
-    (-> client
-        (.query tournament-query #js {:slug input-slug})
-        (.then (fn [res]
-                 (let [data (or (aget res "data") #js {})
-                       tournament (aget data "tournament")
-                       tournament (js->clj tournament :keywordize-keys true)
-                       errors (aget res "errors")
-                       message (aget res "message")
-                       events (->> tournament
-                                   :events
-                                   (a/index-by :id))]
-                   (->>
-                    (cond
-                      (not (nil? errors)) [:loading? false
-                                           :error (aget errors 0 "message")]
-                      (not (nil? message)) [:loading? false
-                                            :error message]
-                      (nil? tournament) [:loading? false
-                                         :error (str "Tournament "
-                                                     input-slug
-                                                     " does not exist")]
-                      :else [:done? false
-                             :step (if done? 2 1)
-                             :completed 1
-                             :slug (:slug tournament)
-                             :tournament (:name tournament)
-                             :events events
-                             :loading? false
-                             :csv nil
-                             :event-ind 0
-                             :event-name (-> events
-                                             (get (first (keys events)))
-                                             :name)
-                             :phase-id nil
-                             :phase-name nil
-                             :sheet-id nil
-                             :num-col nil
-                             :id-col nil])
-                    ->Assoc
-                    (e/push! e-state))))))))
+  (try
+    (let [url (js/URL. input-slug)
+          pathname (.-pathname url)
+          parts (->> (clojure.string/split pathname #"/")
+                     (remove empty?))
+          slug-ind (if (= "admin" (nth parts 0 ""))
+                     2
+                     1)
+          slug (nth parts slug-ind "")]
+      (e/push! e-state (->Assoc [:loading? true :error nil]))
+      (let [client
+            (graphql-client #js {:url "https://api.smash.gg/gql/alpha"
+                                 :headers #js {:Authorization (str "Bearer "
+                                                                   input-key)}})]
+        (-> client
+            (.query tournament-query #js {:slug slug})
+            (.then (fn [res]
+                     (let [data (or (aget res "data") #js {})
+                           tournament (aget data "tournament")
+                           tournament (js->clj tournament :keywordize-keys true)
+                           errors (aget res "errors")
+                           message (aget res "message")
+                           events (->> tournament
+                                       :events
+                                       (a/index-by :id))]
+                       (->>
+                        (cond
+                          (not (nil? errors)) [:loading? false
+                                               :error (aget errors 0 "message")]
+                          (not (nil? message)) [:loading? false
+                                                :error message]
+                          (nil? tournament) [:loading? false
+                                             :error (str "Tournament "
+                                                         input-slug
+                                                         " does not exist")]
+                          :else [:done? false
+                                 :step (if done? 2 1)
+                                 :completed 1
+                                 :slug (:slug tournament)
+                                 :tournament (:name tournament)
+                                 :events events
+                                 :loading? false
+                                 :csv nil
+                                 :event-ind 0
+                                 :event-name (-> events
+                                                 (get (first (keys events)))
+                                                 :name)
+                                 :phase-id nil
+                                 :phase-name nil
+                                 :sheet-id nil
+                                 :num-col nil
+                                 :id-col nil])
+                        ->Assoc
+                        (e/push! e-state))))))))
+    (catch js/Error e
+      (e/push! e-state (->Assoc [:loading? false :error "Invalid URL"]))
+      nil)))
 
 (defn on-phase [e-state {:keys [event-ind phase-id events completed]}]
   (let [phase-name (-> events
