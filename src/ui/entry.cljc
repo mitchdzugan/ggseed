@@ -449,8 +449,13 @@
                                    event-name
                                    phase-name]
                             :as state}]=
-        <[div $=
-          <[div {:class "steps"} $=
+        <[div {:style {:margin "15px 0 0 0"
+                       :display "flex"
+                       :flex-direction "row"
+                       :justify-content "space-evenly"
+                       }} $=
+          <[div {:style {:flex "1"}
+                 :class "steps"} $=
             <[for (map vector (range) ["Link Tournament"
                                        "Select Phase"
                                        "Upload Seeding"
@@ -472,6 +477,14 @@
                      (e/filter #(-> completable?))
                      (e/map #(->SetStep (inc i)))
                      (dom/emit ::state))]]]
+          let [completed? (<= step completed)]
+          <[button {:class "button"
+                    :disabled (not completed?)}
+            "Next"] d-next >
+          (->> (dom/on-click d-next)
+               (e/map #(->SetStep (inc step)))
+               (dom/emit ::state))
+          <[div {:style {:width "20px" :height "1px"}}]
           ]]
       <[dom/bind s-state $[{:keys [step completed] :as state}]=
         <[div {:class "boxer"
