@@ -8,8 +8,6 @@
             ["graphql-client" :as graphql-client]
             ["csv-parse" :as csv-parse]))
 
-(def apikey "41b4513569a9b82c39ed9ba60311162b")
-
 (def tournament-query
   (str "query MyTournament($slug: String) {"
        "  currentUser {"
