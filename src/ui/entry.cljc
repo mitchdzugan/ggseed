@@ -572,7 +572,9 @@
                                    phase-name]
                             :as state}]=
         <[div {:class "columns none is-flex-tablet" :style {:margin "0"}} $=
-          <[div {:class "column"} $=
+          <[div {:style {:overflow "visible"
+                         :flex "1"}
+                 :class "column"} $=
             <[div {:class "content"
                    :style {:margin "0"
                            :height "40px"
