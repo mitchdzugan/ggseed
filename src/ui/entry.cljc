@@ -12,7 +12,13 @@
 
 (def tournament-query
   (str "query MyTournament($slug: String) {"
+       "  currentUser {"
+       "    id"
+       "  }"
        "  tournament(slug: $slug) {"
+       "    admins(roles: [\"admin\", \"manager\", \"creator\", \"reportingManager\", \"bracketManager\"]) {"
+       "      id"
+       "    }"
        "    id"
        "    name"
        "    slug"
@@ -193,6 +199,23 @@
 
 (defui upload-seeding [{:keys [modal? sheet-id csv num-col id-col input-key phase-id] :as state} e-state]
   <[div {:class "seeding-wrap"} $=
+    <[div {:style {:margin "0"}
+           :class "content"} $=
+      <[h3 "Update Seeding Process"]]
+    <[p {:style {:margin-bottom "10px"}} $=
+      <[dom/text (str "The desired seeds need to be uploaded to Google Sheets and made public. The"
+                      " simplest way to do this is to download the phase export for the phase you"
+                      " wish to update (")]
+      <[a {:href (str "https://smash.gg/api-proxy/phase/"
+                      phase-id
+                      "/export_results")}
+        "Download link"]
+      <[dom/text "), update the "]
+      <[strong "Phase Seed"]
+      <[dom/text (str " column to reflect your desired seeds and then upload to google sheets. Once"
+                      " you have done this, you need to use the \"Share\" button at the top right of"
+                      " Google Sheets and ensure the document is visible to anyone with a link. Once"
+                      " public, copy and paste the link below.")]]
     <[div {:class "field"} $=
       <[label {:class "label"} (str "Google Sheets Link")]
       <[div {:class "control"} $=
@@ -204,21 +227,7 @@
         (->> (dom/on-input d-sheet-id)
              (e/map #(.. % -target -value))
              (e/map #(->Assoc [:sheet-id %]))
-             (dom/emit ::state))]
-      <[p {:class "help"} $=
-        <[dom/text (str "The desired seeds need to be uploaded to Google Sheets and made public. The"
-                        " simplest way to do this is to download the phase export for the phase you"
-                        " wish to update (")]
-        <[a {:href (str "https://smash.gg/api-proxy/phase/"
-                        phase-id
-                        "/export_results")}
-          "Download link"]
-        <[dom/text "), update the "]
-        <[strong "Phase Seed"]
-        <[dom/text (str " column to reflect your desired seeds and then upload to google sheets. Once"
-                        " you have done this, you need to use the \"Share\" button at the top right of"
-                        " Google Sheets and ensure the document is visible to anyone with a link. Once"
-                        " public, copy and paste the link here.")]]]
+             (dom/emit ::state))]]
     let [cols (nth csv 0 [])
          no-csv? (empty? csv)]
     <[div {:class {:select-split true :disabled no-csv?}} $=
@@ -349,7 +358,16 @@
             (.query tournament-query #js {:slug slug})
             (.then (fn [res]
                      (let [data (or (aget res "data") #js {})
+                           user (or (aget data "currentUser") #js {})
+                           user-id (aget user "id")
                            tournament (aget data "tournament")
+                           admins (or (aget tournament "admins") #js [])
+                           admin? (-> (->> admins
+                                           js->clj
+                                           (map #(get % "id"))
+                                           (a/index-by #(-> %))
+                                           (a/map-values #(-> true)))
+                                      (get user-id))
                            tournament (js->clj tournament :keywordize-keys true)
                            errors (aget res "errors")
                            message (aget res "message")
@@ -358,6 +376,8 @@
                                        (a/index-by :id))]
                        (->>
                         (cond
+                          (not admin?) [:loading? false
+                                        :error "User does not have seeding permissions"]
                           (not (nil? errors)) [:loading? false
                                                :error (aget errors 0 "message")]
                           (not (nil? message)) [:loading? false
@@ -478,7 +498,7 @@
                      (e/map #(->SetStep (inc i)))
                      (dom/emit ::state))]]]
           let [completed? (<= step completed)]
-          <[button {:class "button"
+          <[button {:class "button is-link"
                     :disabled (not completed?)}
             "Next"] d-next >
           (->> (dom/on-click d-next)
