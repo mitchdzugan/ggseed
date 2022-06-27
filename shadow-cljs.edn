@@ -1,5 +1,5 @@
 {:source-paths ["src" "cli"]
- :dependencies [[mayu "0.1.44"]]
+ :dependencies [[mayu "0.1.61"]]
  :open-file-command ["subl"
                      ["%s:%s:%s" :file :line :column]]
  :dev-http {7000 "target"}

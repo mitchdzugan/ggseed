@@ -77,9 +77,9 @@
            (e/map #(->Assoc [:input-key %]))
            (dom/emit ::state))]
     <[p {:class "help"} $=
-      <[dom/text "Copy and paste your smash.gg API key obtained from "]
+      <[dom/text "Copy and paste your start.gg API key obtained from "]
       <[a {:target "_blank"
-           :href "https://smash.gg/admin/profile/developer"}
+           :href "https://start.gg/admin/profile/developer"}
         "here"]
       <[dom/text "."]]]
   <[div {:class "field"} $=
@@ -122,9 +122,10 @@
                                    :phase-name nil]))
                  (dom/emit ::state))]]]]
     <[div $=
-      let [{:keys [phases]} (->> (or event-ind 0)
-                                 (nth (keys events))
-                                 (get events))]
+      let [event (->> (or event-ind 0)
+                      (nth (keys events))
+                      (get events))
+           {:keys [phases]} event]
       <[div "Select Phase"]
       <[div {:style {:border "1px solid black"}} $=
         <[for phases $[{:keys [id name]}]=
@@ -135,6 +136,7 @@
               ] d-phase >
             (->> (dom/on-click d-phase)
                  (e/map #(->Assoc [:phase-id id
+                                   :event-id (:id event)
                                    :phase-name name]))
                  (dom/emit ::state))]]]]])
 
@@ -204,7 +206,7 @@
       <[dom/text (str "The desired seeds need to be uploaded to Google Sheets and made public. The"
                       " simplest way to do this is to download the phase export for the phase you"
                       " wish to update (")]
-      <[a {:href (str "https://smash.gg/api-proxy/phase/"
+      <[a {:href (str "https://start.gg/api-proxy/phase/"
                       phase-id
                       "/export_results")}
         "Download link"]
@@ -263,7 +265,7 @@
                    (dom/emit ::state))]]]]]
     <[button {:disabled (or (empty? csv) (nil? id-col) (nil? num-col))
               :class "button is-info"}
-      "Update smash.gg seeding"] d-update >
+      "Update start.gg seeding"] d-update >
     (-> (dom/on-click d-update)
         (dom/consume! #(e/push! e-state (->Assoc [:modal? true]))))
     <[when modal?
@@ -296,10 +298,12 @@
                                                                        (drop 1)
                                                                        (map #(-> {:seedId (js/parseInt (nth % id-col))
                                                                                   :seedNum (js/parseInt (nth % num-col))}))
+                                                                       (filter #(and (not (js/isNaN (:seedId %)))
+                                                                                     (not (js/isNaN (:seedNum %)))))
                                                                        (sort-by :seedNum)
                                                                        clj->js)
                                                      client
-                                                     (graphql-client #js {:url "https://api.smash.gg/gql/alpha"
+                                                     (graphql-client #js {:url "https://api.start.gg/gql/alpha"
                                                                           :headers #js {:Authorization
                                                                                         (str "Bearer "
                                                                                              input-key)}})
@@ -322,7 +326,7 @@
                                              true))))]]]]])
 
 (defui finish [{:keys [event-id slug phase-id]} _]
-  let [url (str "https://smash.gg/admin/"
+  let [url (str "https://start.gg/admin/"
                 slug
                 "/seeding/"
                 event-id
@@ -349,7 +353,7 @@
           slug (nth parts slug-ind "")]
       (e/push! e-state (->Assoc [:loading? true :error nil]))
       (let [client
-            (graphql-client #js {:url "https://api.smash.gg/gql/alpha"
+            (graphql-client #js {:url "https://api.start.gg/gql/alpha"
                                  :headers #js {:Authorization (str "Bearer "
                                                                    input-key)}})]
         (-> client

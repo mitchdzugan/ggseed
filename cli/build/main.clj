@@ -11,9 +11,7 @@
   (sh! "rm -rf dist/*")
   (shadow/release :browser)
   (shadow/release :server)
-  (sh! (str "yarn run node-sass "
-            "--output-style compressed "
-            "scss/site.scss > dist/site.css"))
+  (sh! (str "yarn run scss-prod"))
   (let [css (slurp "./dist/site.css")
         assets (read-string (slurp "./dist/assets.edn"))
         css-hash (hash css)
