@@ -206,7 +206,8 @@
       <[dom/text (str "The desired seeds need to be uploaded to Google Sheets and made public. The"
                       " simplest way to do this is to download the phase export for the phase you"
                       " wish to update (")]
-      <[a {:href (str "https://start.gg/api-proxy/phase/"
+      <[a {:target "_blank"
+           :href (str "https://start.gg/api-proxy/phase/"
                       phase-id
                       "/export_results")}
         "Download link"]
