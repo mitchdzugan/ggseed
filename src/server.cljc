@@ -5,6 +5,7 @@
             [allpa.core :as a]
             [cljs.reader :as reader]
             [router :as r]
+            [globals :as g]
             [ui.entry]
             [mayu.dom :as dom]
             [mayu.frp.event :as e]
@@ -79,6 +80,8 @@
         (s/build (s/from route e/never))
         markup-channel (dom/render-to-string {:gets #(-> nil)
                                               :sets #(-> nil)
+                                              :subs #(-> nil)
+                                              :ssr? true
                                               ::r/s-route signal} ui.entry/root)]
     (go-loop []
       (let [markup (<! markup-channel)]
@@ -90,6 +93,24 @@
 
 (def app (express))
 
+(def client-secret (.. js/process -env -CLIENT_SECRET))
+
+(defn token-auth [code ^js res]
+  (.then (curl #js {:url "https://api.start.gg/oauth/access_token"
+                    :json true
+                    :method "POST"
+                    :body #js {:grant_type "authorization_code"
+                               :client_secret client-secret
+                               :code code
+                               :scope g/scope
+                               :client_id g/client-id
+                               :redirect_uri g/redirect-uri}})
+         (fn [^js curld]
+           (if (not= js/String (type (.-body curld)))
+             (.json res (.-body curld))
+             (-> res (.status 400) (.send "Invalid code"))))))
+
+
 (defn fetch [url ^js res]
   (.then (curl #js {:url url})
          (fn [^js curld]
@@ -100,6 +121,10 @@
              (.json res #js{:error "Sheet is not public"})))))
 
 (defn main! []
+  (.get app #"/api_oauth"
+        (fn [req res]
+          (let [code (.. req -query -code)]
+            (token-auth code res))))
   (.get app #"/dl-sheet"
         (fn [req res]
           (let [id (.. req -query -sheet)

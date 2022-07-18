@@ -4,7 +4,9 @@
                :cljs [reitit.frontend :as r])))
 
 (def routes
-  [["/" {:name ::home}]])
+  [["/" {:name ::home}]
+   ["/oauth" {:name ::oauth}]
+   ["/fallback" {:name ::fallback}]])
 
 (def router (r/router routes))
 

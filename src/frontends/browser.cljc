@@ -21,6 +21,14 @@
                                         (t/read r))
                         :sets #(->> (t/write w %)
                                     (js/localStorage.setItem "ggseed"))
+                        :subs (fn [cb]
+                                (.addEventListener js/window "storage"
+                                                   (fn [e]
+                                                     (js/console.log (aget e "key") (aget e "newValue"))
+                                                     (when (= "ggseed" (aget e "key"))
+                                                       (let [v (aget e "newValue")]
+                                                         (cb (when v (t/read r v))))))))
+                        :ssr? false
                         ::r/s-route @a-s-route}
                        ui.entry/root)]
     (reset! a-off off)))

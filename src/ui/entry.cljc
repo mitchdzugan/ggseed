@@ -5,6 +5,8 @@
             [mayu.frp.signal :as s]
             [mayu.dom :as dom]
             [router :as r]
+            [globals :as g]
+            [ui.fallback :as uif]
             ["graphql-client" :as graphql-client]
             ["csv-parse" :as csv-parse]))
 
@@ -28,6 +30,17 @@
        "        id"
        "        name"
        "      }"
+       "    }"
+       "  }"
+       "}"))
+
+(def user-query
+  (str "query MyUser {"
+       "  currentUser {"
+       "    id"
+       "    player {"
+       "      id"
+       "      gamerTag"
        "    }"
        "  }"
        "}"))
@@ -57,31 +70,7 @@
                  (assoc-in curr (if (vector? path) path [path]) val))
                state)))
 
-(defui link-tournament [{:keys [input-slug input-key]} _]
-  <[div {:class "field"} $=
-    <[label {:class "label"} (str "API Key")]
-    <[div {:class "control"} $=
-      <[input {:class "input"
-               :type "text"
-               :placeholder "Key"
-               :value input-key}
-        ] d-key >
-      (->> (dom/on-focus-in d-key)
-           (e/map #(->Assoc [:done? false]))
-           (dom/emit ::state))
-      (->> (dom/on-focus-out d-key)
-           (e/map #(->Assoc [:done? true]))
-           (dom/emit ::state))
-      (->> (dom/on-input d-key)
-           (e/map #(.. % -target -value))
-           (e/map #(->Assoc [:input-key %]))
-           (dom/emit ::state))]
-    <[p {:class "help"} $=
-      <[dom/text "Copy and paste your start.gg API key obtained from "]
-      <[a {:target "_blank"
-           :href "https://start.gg/admin/profile/developer"}
-        "here"]
-      <[dom/text "."]]]
+(defui link-tournament [{:keys [input-slug]} _]
   <[div {:class "field"} $=
     <[label {:class "label"} "Tournament URL"]
     <[div {:class "control"} $=
@@ -206,7 +195,8 @@
       <[dom/text (str "The desired seeds need to be uploaded to Google Sheets and made public. The"
                       " simplest way to do this is to download the phase export for the phase you"
                       " wish to update (")]
-      <[a {:href (str "https://start.gg/api-proxy/phase/"
+      <[a {:target "_blank"
+           :href (str "https://start.gg/api-proxy/phase/"
                       phase-id
                       "/export_results")}
         "Download link"]
@@ -287,6 +277,7 @@
                          :flex-direction "row"}} $=
             <[button {:class "button is-small is-info"} "Update"] d-finalize >
             <[button {:class "button is-small"} "Cancel"] d-cancel >
+            token <- (dom/envs :token)
             (-> (dom/on-click d-cancel)
                 (dom/consume! #(e/push! e-state (->Assoc [:modal? false]))))
             (-> (dom/on-click d-finalize)
@@ -305,8 +296,7 @@
                                                      client
                                                      (graphql-client #js {:url "https://api.start.gg/gql/alpha"
                                                                           :headers #js {:Authorization
-                                                                                        (str "Bearer "
-                                                                                             input-key)}})
+                                                                                        (str "Bearer " token)}})
                                                      ]
                                                  (-> client
                                                      (.query update-mutation #js {:seedMapping seed-mapping
@@ -341,7 +331,7 @@
            :href url} "here"]
       <[dom/text " to view the updated seeding"]]])
 
-(defn on-link [e-state {:keys [input-key input-slug done? completed]}]
+(defn on-link [e-state {:keys [input-slug done? completed]} token]
   (try
     (let [url (js/URL. input-slug)
           pathname (.-pathname url)
@@ -354,8 +344,7 @@
       (e/push! e-state (->Assoc [:loading? true :error nil]))
       (let [client
             (graphql-client #js {:url "https://api.start.gg/gql/alpha"
-                                 :headers #js {:Authorization (str "Bearer "
-                                                                   input-key)}})]
+                                 :headers #js {:Authorization (str "Bearer " token)}})]
         (-> client
             (.query tournament-query #js {:slug slug})
             (.then (fn [res]
@@ -378,8 +367,7 @@
                                        (a/index-by :id))]
                        (->>
                         (cond
-                          (not admin?) [:loading? false
-                                        :error "User does not have seeding permissions"]
+                          ; (not admin?) [:loading? false :error "User does not have seeding permissions"]
                           (not (nil? errors)) [:loading? false
                                                :error (aget errors 0 "message")]
                           (not (nil? message)) [:loading? false
@@ -440,196 +428,304 @@
 (defn on-finish [e-state {:keys [input-key input-slug]}])
 
 (defui home []
-  <[dom/collect-and-reduce ::state reduce-state init-state $=
-    let [e-state (e/on! (e/Event))]
-    (dom/emit ::state e-state)
-    <[div {:style {:height "100%"
-                   :display "flex"
-                   :flex-direction "column"
-                   :align-items "stretch"}} $=
-      s-state <- (dom/envs ::state)
-      s-input <- (s/map #(select-keys % [:input-key
-                                         :input-slug
-                                         :done?
-                                         :event-ind
-                                         :phase-id
-                                         :sheet-id])
-                        s-state)
-      (-> (s/changed s-input)
-          (dom/consume! #(let [state (s/inst! s-state)]
-                           (case (:step state)
-                             1 (on-link e-state state)
-                             2 (on-phase e-state state)
-                             3 (on-upload e-state state)
-                             4 (on-finish e-state state)
-                             nil))))
-      <[dom/bind s-state $[{:keys [completed
-                                   step
-                                   loading?
-                                   error
-                                   tournament
-                                   event-name
-                                   phase-name]
-                            :as state}]=
-        <[div {:style {:margin "15px 0 0 0"
-                       :display "flex"
-                       :flex-direction "row"
-                       :justify-content "space-evenly"
-                       }} $=
-          <[div {:style {:flex "1"}
-                 :class "steps"} $=
-            <[for (map vector (range) ["Link Tournament"
-                                       "Select Phase"
-                                       "Upload Seeding"
-                                       "Finish"]) $[[i title]]=
-              <[keyed i
-                let [completed? (< i completed)
-                     completable? (<= i completed)
-                     active? (= step (inc i))]
-                <[div {:class {:step-item true
-                               :is-completable completable?
-                               :is-active active?
-                               :is-success (and (not active?) completed?)
-                               :is-completed (and (not active?) completable?)}} $=
-                  <[div {:class "step-marker"} (inc i)]
-                  <[div {:class "step-details"} $=
-                    <[p {:class "step-title"} title]]
-                  ] d-step-item >
-                (->> (dom/on-click d-step-item)
-                     (e/filter #(-> completable?))
-                     (e/map #(->SetStep (inc i)))
-                     (dom/emit ::state))]]]
-          let [completed? (<= step completed)]
-          <[button {:class "button is-link"
-                    :disabled (not completed?)}
-            "Next"] d-next >
-          (->> (dom/on-click d-next)
-               (e/map #(->SetStep (inc step)))
-               (dom/emit ::state))
-          <[div {:style {:width "20px" :height "1px"}}]
-          ]]
-      <[dom/bind s-state $[{:keys [step completed] :as state}]=
-        <[div {:class "boxer"
-               :style {:flex "1"
-                       :position "relative"
-                       :overflow "hidden"}} $=
-          <[div {:style {:position "absolute"
-                         :height "100%"
-                         :width "100%"
-                         :left "0"
-                         :top "0"
-                         :transition "transform 0.5s ease-in-out"
-                         :transform (str "translateY("
-                                         (* -100 (dec step))
-                                         "%)")}} $=
-            <[when true
-              <[div {:class "scroller"
-                     :style {:position "absolute"
-                             :height "100%"
-                             :width "100%"
-                             :padding "25px"
-                             :overflow "scroll"
-                             :left "0"
-                             :top "0"}} $=
-                <[link-tournament state e-state]]]
-            <[when (> completed 0)
-              <[div {:class "scroller"
-                     :style {:position "absolute"
-                             :height "100%"
-                             :width "100%"
-                             :padding "25px"
-                             :overflow "scroll"
-                             :left "0"
-                             :top "100%"}} $=
-                <[select-phase state e-state]]]
-            <[when (> completed 1)
-              <[div {:class "scroller"
-                     :style {:position "absolute"
-                             :height "100%"
-                             :width "100%"
-                             :padding "25px"
-                             :overflow "scroll"
-                             :left "0"
-                             :top "200%"}} $=
-                <[upload-seeding state e-state]]]
-            <[when (> completed 2)
-              <[div {:class "scroller"
-                     :style {:position "absolute"
-                             :height "100%"
-                             :width "100%"
-                             :padding "25px"
-                             :overflow "scroll"
-                             :left "0"
-                             :top "300%"}} $=
-                <[finish state e-state]]]]]]
-
-
-
-      <[dom/bind s-state $[{:keys [completed
-                                   step
-                                   loading?
-                                   error
-                                   tournament
-                                   event-name
-                                   phase-name]
-                            :as state}]=
-        <[div {:class "columns none is-flex-tablet" :style {:margin "0"}} $=
-          <[div {:style {:overflow "visible"
-                         :flex "1"}
-                 :class "column"} $=
-            <[div {:class "content"
-                   :style {:margin "0"
-                           :height "40px"
+  gets <- (dom/envs :gets)
+  sets <- (dom/envs :sets)
+  subs <- (dom/envs :subs)
+  ssr? <- (dom/envs :ssr?)
+  let [storage (gets)
+       e-init? (e/on! (e/Event))
+       e-gamerTag (e/on! (e/Event))
+       e-token (e/on! (e/Event))
+       e-refresh (e/on! (e/Event))
+       e-code (e/on! (e/Event))]
+  [(subs (fn [storage]
+           (e/push! e-token (:token storage))
+           (e/push! e-refresh (:refresh storage))))]
+  s-init? <- (s/from (not (nil? (:token storage))) e-init?)
+  s-token <- (s/from (:token storage) e-token)
+  s-refresh <- (s/from (:refresh storage) e-refresh)
+  s-code <- (s/from nil e-code)
+  s-gamerTag <- (s/from nil e-gamerTag)
+  (dom/consume! s-code
+                (fn [code]
+                  (when code
+                    (e/push! e-init? true)
+                    (.catch
+                     (.then (.then (js/fetch (str "/api_oauth?code=" code)) #(.json %))
+                            (fn [j]
+                              (let [token (aget j "access_token")
+                                    refresh (aget j "refresh_token")]
+                                (e/push! e-token token)
+                                (e/push! e-refresh refresh)
+                                (sets {:token token :refresh refresh}))))
+                     (fn [] (e/push! e-init? false))))))
+  let [code (when (not ssr?)
+              (.get (js/URLSearchParams. (.. js/window -location -search)) "code"))]
+  [(when code
+     (js/setTimeout (fn []
+                      (e/push! e-code code))
+                    0))]
+  <[dom/bind s-token $[token]=
+    [(when token
+       (let [client
+             (graphql-client #js {:url "https://api.start.gg/gql/alpha"
+                                  :headers #js {:Authorization (str "Bearer " token)}})]
+         (-> client
+             (.query user-query #js {})
+             (.then (fn [res]
+                      (let [data (or (aget res "data") #js {})
+                            user (or (aget data "currentUser") #js {})
+                            player (or (aget user "player") #js {})
+                            gamerTag (aget player "gamerTag")]
+                        (e/push! e-gamerTag gamerTag))))
+             (.finally (fn []
+                         (when code
+                           (aset js/document "location" "?"))
+                         (e/push! e-init? false))))))]]
+  <[dom/bind s-init? $[init?]=
+    <[dom/bind s-token $[token]=
+      <[dom/assoc-env :token token $=
+        <[dom/bind s-gamerTag $[gamerTag]=
+          <[when (and (not ssr?) (not init?) (not gamerTag))
+            <[div {:style {:position "fixed"
                            :display "flex"
-                           :flex-direction "row"
-                           :align-self "center"
-                           :justify-content "center"}} $=
-              <[span {:style {:visibility (if (and (not loading?) error)
-                                            "visible" "hidden")}
-                      :class "has-text-danger"}
-                error]
-              <[span {:style {:visibility (if loading? "visible" "hidden")}
-                      :class "icon"} $=
-                <[i {:class "fas fa-spinner fa-spin fa-2x fa-fw"}]]
-              <[span {:style {:visibility (if (and (>= completed step)
-                                                   (not loading?)
-                                                   (not error))
-                                            "visible" "hidden")}
-                      :class "icon has-text-success"} $=
-                <[i {:class "fas fa-check fa-2x fa-fw"}]]]]
-          <[div {:class "column"} $=
-            <[strong "Tournament: "]
-            <[dom/text (or tournament "N/A")]]
-          <[div {:class "column"} $=
-            <[strong "Event: "]
-            <[dom/text (or event-name "N/A")]]
-          <[div {:class "column"} $=
-            <[strong "Phase: "]
-            <[dom/text (or phase-name "N/A")]]]
-        <[div {:class "columns none is-flex-mobile" :style {:margin "0"}} $=
-          <[div {:class "column"} $=
-            <[div {:class "content"
-                   :style {:margin "0"
-                           :height "40px"
+                           :align-items "center"
+                           :justify-content "center"
+                           :z-index "100"
+                           :left 0
+                           :height "100%"
+                           :width "100%"
+                           :background "rgba(0, 0, 0, 0.25)"
+                           :transition "opacity 0.5s ease-in-out"
+                           :opacity "0"
+                           :delayed {:opacity "1"}
+                           :remove {:opacity "0"}}} $=
+              <[div {:style {;; :height "50%"
+                             :position "relative"
+                             :text-align "center"
+                             :max-width "40rem"}
+                     :class "notification is-light is-warning"} $=
+                <[dom/text (str "You are not currently logged in to your start.gg account. "
+                                "In order to use this tool, you must connect your account. "
+                                "Click on the button below to link your account.")]
+                <[div {:class "buttons"
+                       :style {:margin-top "20px"
+                               :display "flex"
+                               :flex-direction "row"
+                               :justify-content "center"}} $=
+                  <[a {:style {:text-decoration "none"}
+                       :target "_blank" :href g/auth-url} $=
+                    <[button {:class "button is-info"} "Link start.gg account"]]]
+                <[dom/span {:class "is-size-7"} $=
+                  <[dom/text "If you have any issues with oauth, "]
+                  <[a {:href "/fallback"} "click here"]
+                  <[dom/text " to use the old fallback UI"]]]]]
+          <[dom/collect-and-reduce ::state reduce-state init-state $=
+            let [e-state (e/on! (e/Event))]
+            (dom/emit ::state e-state)
+            <[div {:style {:height "100%"
                            :display "flex"
-                           :flex-direction "row"
-                           :align-self "center"
-                           :justify-content "center"}} $=
-              <[span {:style {:visibility (if (and (not loading?) error)
-                                            "visible" "hidden")}
-                      :class "has-text-danger"}
-                error]
-              <[span {:style {:visibility (if loading? "visible" "hidden")}
-                      :class "icon"} $=
-                <[i {:class "fas fa-spinner fa-spin fa-2x fa-fw"}]]
-              <[span {:style {:visibility (if (and (>= completed step)
-                                                   (not loading?)
-                                                   (not error))
-                                            "visible" "hidden")}
-                      :class "icon has-text-success"} $=
-                <[i {:class "fas fa-check fa-2x fa-fw"}]]]]]]
+                           :flex-direction "column"
+                           :align-items "stretch"}} $=
+              s-state <- (dom/envs ::state)
+              s-input <- (s/map #(select-keys % [:input-key
+                                                 :input-slug
+                                                 :done?
+                                                 :event-ind
+                                                 :phase-id
+                                                 :sheet-id])
+                                s-state)
+              (-> (s/changed s-input)
+                  (dom/consume! #(let [state (s/inst! s-state)]
+                                   (case (:step state)
+                                     1 (on-link e-state state token)
+                                     2 (on-phase e-state state)
+                                     3 (on-upload e-state state)
+                                     4 (on-finish e-state state)
+                                     nil))))
+              <[dom/bind s-state $[{:keys [completed
+                                           step
+                                           loading?
+                                           error
+                                           tournament
+                                           event-name
+                                           phase-name]
+                                    :as state}]=
+                <[div {:style {:margin "15px 0 0 0"
+                               :display "flex"
+                               :flex-direction "row"
+                               :justify-content "space-evenly"
+                               }} $=
+                  <[div {:style {:flex "1"}
+                         :class "steps"} $=
+                    <[for (map vector (range) ["Link Tournament"
+                                               "Select Phase"
+                                               "Upload Seeding"
+                                               "Finish"]) $[[i title]]=
+                      <[keyed i
+                        let [completed? (< i completed)
+                             completable? (<= i completed)
+                             active? (= step (inc i))]
+                        <[div {:class {:step-item true
+                                       :is-completable completable?
+                                       :is-active active?
+                                       :is-success (and (not active?) completed?)
+                                       :is-completed (and (not active?) completable?)}} $=
+                          <[div {:class "step-marker"} (inc i)]
+                          <[div {:class "step-details"} $=
+                            <[p {:class "step-title"} title]]
+                          ] d-step-item >
+                        (->> (dom/on-click d-step-item)
+                             (e/filter #(-> completable?))
+                             (e/map #(->SetStep (inc i)))
+                             (dom/emit ::state))]]]
+                  let [completed? (<= step completed)]
+                  <[button {:class "button is-link"
+                            :disabled (not completed?)}
+                    "Next"] d-next >
+                  (->> (dom/on-click d-next)
+                       (e/map #(->SetStep (inc step)))
+                       (dom/emit ::state))
+                  <[div {:style {:width "20px" :height "1px"}}]
+                  ]]
+              <[dom/bind s-state $[{:keys [step completed] :as state}]=
+                <[div {:class "boxer"
+                       :style {:flex "1"
+                               :transition "opacity 0.5s ease-in-out"
+                               :opacity (if init? "0.4" "1")
+                               :pointer-events (if init? "none" "auto")
+                               :position "relative"
+                               :overflow "hidden"}} $=
+                  <[div {:style {:position "absolute"
+                                 :height "100%"
+                                 :width "100%"
+                                 :left "0"
+                                 :top "0"
+                                 :transition "transform 0.5s ease-in-out"
+                                 :transform (str "translateY("
+                                                 (* -100 (dec step))
+                                                 "%)")}} $=
+                    <[when true
+                      <[div {:class "scroller"
+                             :style {:position "absolute"
+                                     :height "100%"
+                                     :width "100%"
+                                     :padding "25px"
+                                     :overflow "scroll"
+                                     :left "0"
+                                     :top "0"}} $=
+                        <[link-tournament state e-state]]]
+                    <[when (> completed 0)
+                      <[div {:class "scroller"
+                             :style {:position "absolute"
+                                     :height "100%"
+                                     :width "100%"
+                                     :padding "25px"
+                                     :overflow "scroll"
+                                     :left "0"
+                                     :top "100%"}} $=
+                        <[select-phase state e-state]]]
+                    <[when (> completed 1)
+                      <[div {:class "scroller"
+                             :style {:position "absolute"
+                                     :height "100%"
+                                     :width "100%"
+                                     :padding "25px"
+                                     :overflow "scroll"
+                                     :left "0"
+                                     :top "200%"}} $=
+                        <[upload-seeding state e-state]]]
+                    <[when (> completed 2)
+                      <[div {:class "scroller"
+                             :style {:position "absolute"
+                                     :height "100%"
+                                     :width "100%"
+                                     :padding "25px"
+                                     :overflow "scroll"
+                                     :left "0"
+                                     :top "300%"}} $=
+                        <[finish state e-state]]]]]]
+              <[dom/bind s-state $[{:keys [completed
+                                           step
+                                           loading?
+                                           error
+                                           tournament
+                                           event-name
+                                           phase-name]
+                                    :as state}]=
+                <[div {:class "columns none is-flex-tablet" :style {:margin "0"}} $=
+                  <[div {:style {:overflow "visible"
+                                 :flex "1"}
+                         :class "column"} $=
+                    <[div {:class "content"
+                           :style {:margin "0"
+                                   :height "40px"
+                                   :display "flex"
+                                   :flex-direction "row"
+                                   :align-self "center"
+                                   :justify-content "center"}} $=
+                      <[span {:style {:visibility (if (and (not loading?) error)
+                                                    "visible" "hidden")}
+                              :class "has-text-danger"}
+                        error]
+                      <[span {:style {:visibility (if loading? "visible" "hidden")}
+                              :class "icon"} $=
+                        <[i {:class "fas fa-spinner fa-spin fa-2x fa-fw"}]]
+                      <[span {:style {:visibility (if (and (>= completed step)
+                                                           (not loading?)
+                                                           (not error))
+                                                    "visible" "hidden")}
+                              :class "icon has-text-success"} $=
+                        <[i {:class "fas fa-check fa-2x fa-fw"}]]]]
+                  <[div {:class "column"} $=
+                    <[strong "User: "]
+                    <[dom/text (or gamerTag "N/A")]
+                    <[when gamerTag
+                      <[a {:style {:margin-left "0.4rem"}
+                           :href ""} "Logout"] d-logout >
+                      (-> (dom/on-click d-logout)
+                          (dom/consume! (fn []
+                                          (sets {})
+                                          (e/push! e-gamerTag nil)
+                                          (e/push! e-token nil)
+                                          (e/push! e-refresh nil))))]]
+                  <[div {:class "column"} $=
+                    <[strong "Tournament: "]
+                    <[dom/text (or tournament "N/A")]]
+                  <[div {:class "column"} $=
+                    <[strong "Event: "]
+                    <[dom/text (or event-name "N/A")]]
+                  <[div {:class "column"} $=
+                    <[strong "Phase: "]
+                    <[dom/text (or phase-name "N/A")]]
+                  <[div {:class "column is-size-7"} $=
+                    <[a {:style {:position "relative"
+                                 :top "0.3125rem"}
+                         :href "/fallback"} "Fallback"]]]
+                <[div {:class "columns none is-flex-mobile" :style {:margin "0"}} $=
+                  <[div {:class "column"} $=
+                    <[div {:class "content"
+                           :style {:margin "0"
+                                   :height "40px"
+                                   :display "flex"
+                                   :flex-direction "row"
+                                   :align-self "center"
+                                   :justify-content "center"}} $=
+                      <[span {:style {:visibility (if (and (not loading?) error)
+                                                    "visible" "hidden")}
+                              :class "has-text-danger"}
+                        error]
+                      <[span {:style {:visibility (if loading? "visible" "hidden")}
+                              :class "icon"} $=
+                        <[i {:class "fas fa-spinner fa-spin fa-2x fa-fw"}]]
+                      <[span {:style {:visibility (if (and (>= completed step)
+                                                           (not loading?)
+                                                           (not error))
+                                                    "visible" "hidden")}
+                              :class "icon has-text-success"} $=
+                        <[i {:class "fas fa-check fa-2x fa-fw"}]]]]]]
 
-      ]])
+              ]]]]]])
 
 (defui root []
   s-route <- (dom/envs ::r/s-route)
@@ -644,4 +740,6 @@
         <[div {:class "container"
                :style {:height "100%"}} $=
           <[case name
-            <[::r/home <[home]]]]]]])
+            <[::r/home <[home]]
+            <[::r/oauth <[home]]
+            <[::r/fallback <[uif/home]]]]]]])
